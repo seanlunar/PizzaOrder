@@ -52,7 +52,7 @@
         mapboxgl.accessToken =
             'pk.eyJ1Ijoic2Vhbmx1bmFyIiwiYSI6ImNqdjI5Y242cTB3dHQ0OXFjOXV3YWRlMm0ifQ.spFYWhYyy72rNxAT0Cg59A'; // Replace with your token
 
-            const map = new mapboxgl.Map({
+        const map = new mapboxgl.Map({
             container: 'map',
             style: 'mapbox://styles/mapbox/light-v11',
             center: [34.8, -13.9],
@@ -60,16 +60,22 @@
         });
 
         const backButton = document.getElementById("backButton");
-        let selectedDistrict = null;
+        let currentLevel = 'district'; // 'district' or 'constituency'
+        let selectedFeature = null;
 
         function loadGeoJSON(geojsonFile, sourceId, highlightFeature = null, zoomOut = false) {
             fetch(geojsonFile)
                 .then(response => response.json())
                 .then(data => {
                     if (highlightFeature) {
-                        // Find the selected feature and highlight it
+                        // Highlight selected feature
                         data.features = data.features.map(feature => {
-                            if (feature.properties.District === highlightFeature) {
+                            if (
+                                (currentLevel === 'district' && feature.properties.District ===
+                                    highlightFeature) ||
+                                (currentLevel === 'constituency' && feature.properties.Constituency ===
+                                    highlightFeature)
+                            ) {
                                 feature.properties.selected = true;
                             } else {
                                 feature.properties.selected = false;
@@ -87,7 +93,7 @@
                         });
 
                         map.addLayer({
-                            id: 'districts-layer',
+                            id: `${sourceId}-layer`,
                             type: 'fill',
                             source: sourceId,
                             paint: {
@@ -101,7 +107,7 @@
                         });
 
                         map.addLayer({
-                            id: 'districts-border',
+                            id: `${sourceId}-border`,
                             type: 'line',
                             source: sourceId,
                             paint: {
@@ -109,35 +115,51 @@
                                 'line-width': 2
                             }
                         });
+                    }
 
-                        map.on('click', 'districts-layer', function (e) {
-                            const clickedDistrict = e.features[0].properties.District;
-                            selectedDistrict = clickedDistrict;
+                    // 🚀 Remove any existing click event for this layer before adding a new one
+                    map.off('click', `${sourceId}-layer`);
+                    map.on('click', `${sourceId}-layer`, function(e) {
+                        if (currentLevel === 'district') {
+                            const districtName = e.features[0].properties.District;
+                            selectedFeature = districtName;
 
-                            const coordinates = e.lngLat;
-
-                            // Zoom to clicked district
                             map.flyTo({
-                                center: [coordinates.lng, coordinates.lat],
-                                zoom: 7.8,
+                                center: e.lngLat,
+                                zoom: 10,
                                 essential: true
                             });
 
-                            // Switch to const.geojson and highlight the district
-                            loadGeoJSON('/const.geojson', 'districts', clickedDistrict);
-
-                            // Show back button
+                            currentLevel = 'constituency';
+                            loadGeoJSON('/last.geojson', 'constituencies', districtName);
                             backButton.style.display = "block";
-                        });
+                        } else if (currentLevel === 'constituency') {
+                            // Pick the first valid feature and prevent duplicate clicks
+                            const feature = e.features[0];
+                            if (!feature || !feature.properties.Constituency) return;
 
-                        map.on('mouseenter', 'districts-layer', function () {
-                            map.getCanvas().style.cursor = 'pointer';
-                        });
+                            const constituencyName = feature.properties.Constituency;
 
-                        map.on('mouseleave', 'districts-layer', function () {
-                            map.getCanvas().style.cursor = '';
-                        });
-                    }
+                            // 🚀 Check if the constituency is already selected (prevents duplicate logs)
+                            if (selectedFeature === constituencyName) return;
+                            selectedFeature = constituencyName;
+
+                            console.log(`Clicked constituency: ${constituencyName}`);
+                            alert(`You clicked on: ${constituencyName}`);
+
+                            loadGeoJSON('/last.geojson', 'constituencies', constituencyName);
+                        }
+                    });
+
+
+
+                    map.on('mouseenter', `${sourceId}-layer`, function() {
+                        map.getCanvas().style.cursor = 'pointer';
+                    });
+
+                    map.on('mouseleave', `${sourceId}-layer`, function() {
+                        map.getCanvas().style.cursor = '';
+                    });
 
                     if (zoomOut) {
                         map.flyTo({
@@ -146,21 +168,24 @@
                             essential: true
                         });
                         backButton.style.display = "none";
-                        selectedDistrict = null;
+                        selectedFeature = null;
+                        currentLevel = 'district';
                     }
                 })
                 .catch(error => console.error('Error loading GeoJSON:', error));
         }
 
-        // Load districts.geojson initially
-        map.on('load', function () {
+
+        // Load district map initially
+        map.on('load', function() {
             loadGeoJSON('/districts.geojson', 'districts');
         });
 
         // Back to Districts button event
-        backButton.addEventListener("click", function () {
+        backButton.addEventListener("click", function() {
             loadGeoJSON('/districts.geojson', 'districts', null, true);
         });
     </script>
 </body>
+
 </html>
